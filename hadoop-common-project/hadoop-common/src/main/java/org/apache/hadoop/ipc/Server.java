@@ -2027,14 +2027,15 @@ public abstract class Server {
           String error = null;
           RpcStatusProto returnStatus = RpcStatusProto.SUCCESS;
           RpcErrorCodeProto detailedErr = null;
-          Writable value = null;
+          Writable value = null;  // 返回的结果值，writable对象或者其他的java基本类型
 
           CurCall.set(call);
           if (call.traceSpan != null) {
             traceScope = Trace.continueSpan(call.traceSpan);
           }
 
-          try {
+          try { // 对数据进行处理 ,调用的是Server的子类实现的call方法 在这里即为WritableRpcEngine中的Server.call方法
+
             // Make the call as the user via Subject.doAs, thus associating
             // the call with the Subject
             if (call.connection.user == null) {
@@ -2092,11 +2093,13 @@ public abstract class Server {
             // responder.doResponse() since setupResponse may use
             // SASL to encrypt response data and SASL enforces
             // its own message ordering.
+              //发送数据
             setupResponse(buf, call, returnStatus, detailedErr, 
                 value, errorClass, error);
             
             // Discard the large buf and reset it back to smaller size 
             // to free up heap
+
             if (buf.size() > maxRespSize) {
               LOG.warn("Large response size " + buf.size() + " for call "
                   + call.toString());
