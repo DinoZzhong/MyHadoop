@@ -18,32 +18,34 @@
 
 package org.apache.hadoop.ipc;
 
-import java.lang.reflect.Proxy;
-import java.lang.reflect.Method;
-import java.lang.reflect.InvocationTargetException;
-
-import java.net.InetSocketAddress;
-import java.io.*;
-import java.util.concurrent.atomic.AtomicBoolean;
-
-import javax.net.SocketFactory;
-
-import org.apache.commons.logging.*;
-
-import org.apache.hadoop.io.*;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.classification.InterfaceAudience;
+import org.apache.hadoop.classification.InterfaceStability;
+import org.apache.hadoop.conf.Configurable;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.io.ObjectWritable;
+import org.apache.hadoop.io.UTF8;
+import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.retry.RetryPolicy;
 import org.apache.hadoop.ipc.Client.ConnectionId;
 import org.apache.hadoop.ipc.RPC.RpcInvoker;
-import org.apache.hadoop.ipc.VersionedProtocol;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.token.SecretManager;
 import org.apache.hadoop.security.token.TokenIdentifier;
 import org.apache.hadoop.util.Time;
-import org.apache.hadoop.classification.InterfaceAudience;
-import org.apache.hadoop.classification.InterfaceStability;
-import org.apache.hadoop.conf.*;
 import org.htrace.Trace;
 import org.htrace.TraceScope;
+
+import javax.net.SocketFactory;
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.net.InetSocketAddress;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** An RpcEngine implementation for Writable data. */
 @InterfaceStability.Evolving
@@ -214,7 +216,10 @@ public class WritableRpcEngine implements RpcEngine {
     private Client client;
     private boolean isClosed = false;
     private final AtomicBoolean fallbackToSimpleAuth;
-
+      /**
+       * 在invoker触发时创建两个成员变量，分别是connectionid和client
+       * client主要功能是发送远程调用信息并接收返回结果 注;这里使用的是socket
+       * */
     public Invoker(Class<?> protocol,
                    InetSocketAddress address, UserGroupInformation ticket,
                    Configuration conf, SocketFactory factory,
@@ -226,6 +231,7 @@ public class WritableRpcEngine implements RpcEngine {
       this.fallbackToSimpleAuth = fallbackToSimpleAuth;
     }
 
+      //对应的invoke实现方法，这里调用对应的client的call方法
     @Override
     public Object invoke(Object proxy, Method method, Object[] args)
       throws Throwable {
@@ -306,6 +312,7 @@ public class WritableRpcEngine implements RpcEngine {
           "Not supported: connectionRetryPolicy=" + connectionRetryPolicy);
     }
 
+    // 如果是客户端调用 则对应的invoker对象则是ClientProtocol
     T proxy = (T) Proxy.newProxyInstance(protocol.getClassLoader(),
         new Class[] { protocol }, new Invoker(protocol, addr, ticket, conf,
             factory, rpcTimeout, fallbackToSimpleAuth));

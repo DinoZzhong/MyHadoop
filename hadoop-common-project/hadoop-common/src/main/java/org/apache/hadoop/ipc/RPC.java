@@ -18,29 +18,12 @@
 
 package org.apache.hadoop.ipc;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.Proxy;
-
-import java.net.ConnectException;
-import java.net.InetSocketAddress;
-import java.net.NoRouteToHostException;
-import java.net.SocketTimeoutException;
-import java.io.*;
-import java.io.Closeable;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
-
-import javax.net.SocketFactory;
-
-import org.apache.commons.logging.*;
-
+import com.google.protobuf.BlockingService;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.HadoopIllegalArgumentException;
-import org.apache.hadoop.io.*;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.retry.RetryPolicy;
 import org.apache.hadoop.ipc.Client.ConnectionId;
 import org.apache.hadoop.ipc.protobuf.ProtocolInfoProtos.ProtocolInfoService;
@@ -51,11 +34,21 @@ import org.apache.hadoop.security.SaslRpcServer;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.security.token.SecretManager;
 import org.apache.hadoop.security.token.TokenIdentifier;
-import org.apache.hadoop.conf.*;
 import org.apache.hadoop.util.ReflectionUtils;
 import org.apache.hadoop.util.Time;
 
-import com.google.protobuf.BlockingService;
+import javax.net.SocketFactory;
+import java.io.Closeable;
+import java.io.IOException;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Proxy;
+import java.net.ConnectException;
+import java.net.InetSocketAddress;
+import java.net.NoRouteToHostException;
+import java.net.SocketTimeoutException;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** A simple RPC mechanism.
  *
@@ -567,6 +560,14 @@ public class RPC {
     if (UserGroupInformation.isSecurityEnabled()) {
       SaslRpcServer.init(conf);
     }
+
+       /**
+        * 客户端进来后最终调用本方法，先构造一个RpcEngine,再然后调用对应引擎的getProxy
+        *
+        * {@link RpcEngine}
+        * {@link WritableRpcEngine} 这是默认的实现
+        *
+        * */
     return getProtocolEngine(protocol, conf).getProxy(protocol, clientVersion,
         addr, ticket, conf, factory, rpcTimeout, connectionRetryPolicy,
         fallbackToSimpleAuth);
@@ -583,6 +584,8 @@ public class RPC {
     * @return a proxy instance
     * @throws IOException
     */
+
+   //不断的进入 一直到 getProtocolEngine
    public static <T> T getProxy(Class<T> protocol,
                                  long clientVersion,
                                  InetSocketAddress addr, Configuration conf)

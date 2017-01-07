@@ -583,6 +583,8 @@ public abstract class Server {
       // create a selector;
       selector= Selector.open();
       readers = new Reader[readThreads];
+
+        // 循环执行reader，即调用Reader.run，循环监控各通道
       for (int i = 0; i < readThreads; i++) {
         Reader reader = new Reader(
             "Socket Reader #" + (i + 1) + " for port " + port);
@@ -679,6 +681,7 @@ public abstract class Server {
 
     @Override
     public void run() {
+        // 底层调用的是java nio封装好的selector模块，专门用于读取socket数据
       LOG.info(Thread.currentThread().getName() + ": starting");
       SERVER.set(Server.this);
       connectionManager.startIdleScan();
@@ -693,7 +696,7 @@ public abstract class Server {
             try {
               if (key.isValid()) {
                 if (key.isAcceptable())
-                  doAccept(key);
+                  doAccept(key); // 初始化reader，打开一个channel进行读取数据
               }
             } catch (IOException e) {
             }
@@ -2430,8 +2433,14 @@ public abstract class Server {
 
   /** Starts the service.  Must be called before any calls will be handled. */
   public synchronized void start() {
-    responder.start();
+      // 整个类的公用成员变量为 callQueue
+    responder.start(); // 创建用户返回数据给客户端的线程
+
+      // 监听客户单的连接请求，注;内部有多个reader线程负责取连接请求发来的数据
+      // 不仅读，同时也将读取完的数据创建一个call对象然后放入到callQueue
+      //  Reader.run → Reader.doRunLoop→Reader.doRead → Connection.readAndProcess→ Connection.processOneRpc→ Connection.processRpcRequest
     listener.start();
+      //循坏处理数据，如果没有数据就block waiting
     handlers = new Handler[handlerCount];
     
     for (int i = 0; i < handlerCount; i++) {

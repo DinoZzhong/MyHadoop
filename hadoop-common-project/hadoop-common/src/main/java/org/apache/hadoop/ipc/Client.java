@@ -18,43 +18,10 @@
 
 package org.apache.hadoop.ipc;
 
-import static org.apache.hadoop.ipc.RpcConstants.*;
-
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.FilterInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InterruptedIOException;
-import java.io.OutputStream;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.Socket;
-import java.net.SocketTimeoutException;
-import java.net.UnknownHostException;
-import java.security.PrivilegedExceptionAction;
-import java.util.Arrays;
-import java.util.Hashtable;
-import java.util.Iterator;
-import java.util.Map.Entry;
-import java.util.Random;
-import java.util.Set;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
-
-import javax.net.SocketFactory;
-import javax.security.sasl.Sasl;
-
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Preconditions;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import com.google.protobuf.CodedOutputStream;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.classification.InterfaceAudience;
@@ -90,10 +57,19 @@ import org.apache.hadoop.util.StringUtils;
 import org.apache.hadoop.util.Time;
 import org.htrace.Trace;
 
-import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Preconditions;
-import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import com.google.protobuf.CodedOutputStream;
+import javax.net.SocketFactory;
+import javax.security.sasl.Sasl;
+import java.io.*;
+import java.net.*;
+import java.security.PrivilegedExceptionAction;
+import java.util.*;
+import java.util.Map.Entry;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+
+import static org.apache.hadoop.ipc.RpcConstants.PING_CALL_ID;
 
 /** A client for an IPC service.  IPC calls take a single {@link Writable} as a
  * parameter, and return a {@link Writable} as their value.  A service runs on
@@ -961,8 +937,9 @@ public class Client {
         LOG.debug(getName() + ": starting, having connections " 
             + connections.size());
 
-      try {
+      try { // 这里一直保持循环一直到返回结果
         while (waitForWork()) {//wait here for work - read or close connection
+            // 这里接收来自server端responder的数据，接收成功对应列表的call会被移除
           receiveRpcResponse();
         }
       } catch (Throwable t) {
@@ -1431,13 +1408,20 @@ public class Client {
    * Throws exceptions if there are network problems or if the remote code
    * threw an exception.
    */
+
+
   public Writable call(RPC.RpcKind rpcKind, Writable rpcRequest,
       ConnectionId remoteId, int serviceClass,
       AtomicBoolean fallbackToSimpleAuth) throws IOException {
+    // 创建Call对象，封装对应的rpc请求，
+    // 包涵对应的成员变量，即标识id、请求数据、返回数据、是否完成等
     final Call call = createCall(rpcKind, rpcRequest);
+    // 创建一个connection线程与服务器连接(server端和client的通信连接)
+    // 同时也会将对应未完成的call利用hash表进行保存
     Connection connection = getConnection(remoteId, call, serviceClass,
       fallbackToSimpleAuth);
-    try {
+
+    try {// 将call对象发送给Server
       connection.sendRpcRequest(call);                 // send the rpc request
     } catch (RejectedExecutionException e) {
       throw new IOException("connection has been closed", e);
@@ -1450,6 +1434,13 @@ public class Client {
     boolean interrupted = false;
     synchronized (call) {
       while (!call.done) {
+        /**
+         * 如果没有完成，那么客户端将以阻塞的方式进行等待
+         * server端处理完成之后会通过网络返回给client端
+         * 具体的代码{@link org.apache.hadoop.ipc.Client.Connection}中的tun方法中
+         * */
+      //
+        //
         try {
           call.wait();                           // wait for the result
         } catch (InterruptedException ie) {
